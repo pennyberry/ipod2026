@@ -14,6 +14,12 @@ iPod music player UI - running on Adafruit Metro ESP32-S3 (CircuitPython) along 
 
 Wiring as built; GPIOs verified against the Metro ESP32-S3 board definition.
 
+## Pictures
+
+![Screenshot](pics/1.jpg)
+![Screenshot](pics/2.jpg)
+![Screenshot](pics/3.jpg)
+
 ### TLV320DAC3100 I2S DAC ↔ ESP32
 https://www.adafruit.com/product/6309
 
