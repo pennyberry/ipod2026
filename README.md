@@ -14,6 +14,9 @@ iPod music player UI - running on Adafruit Metro ESP32-S3 (CircuitPython) along 
 
 Wiring as built; GPIOs verified against the Metro ESP32-S3 board definition.
 
+Adafruit Metro ESP32-S3 with 16 MB Flash 8 MB PSRAM
+https://www.adafruit.com/product/5500
+
 ## Pictures
 
 ![Screenshot](pics/1.jpg)
