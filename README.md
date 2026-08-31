@@ -91,7 +91,7 @@ these individual libraries
 - bdf2adafruit.py
 - gfx.mpy
 
-these libraries
+these library folders
 
 - adafruit_bitmap_font
 - adafruit_bus_device
