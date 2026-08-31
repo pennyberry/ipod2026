@@ -50,13 +50,21 @@ Shares the board SPI bus with the SD card below.
 
 https://www.adafruit.com/product/5752
 
-- Stemma QT → Stemma QT (SCL=GPIO48, SDA=GPIO47)
+| Pin | Connection |
+|-----|-----------|
+| Stemma QT | Stemma QT |
+
+
+- (SCL=GPIO48, SDA=GPIO47)
 - One seesaw chip @0x49 carries all 4 knobs, their buttons, and 4 NeoPixels
 - Encoders: ch 0–3
 
-### MAX17048 LiPo Fuel Gauge ↔ ESP32
+### lifepo4 battery with JSP connector ↔ ESP32
 
-- Battery JST connector → board battery JST (**DOUBLE CHECK POLARITY!**)
+| Pin | Connection |
+|-----|-----------|
+| battery positive/negative | JST connector (**DOUBLE CHECK POLARITY!**) |
+
 - 3.7V Lifepo4
 - Chip reports 0–100% SoC over I2C at addr 0x36 (no divider or chemistry table needed)
 
