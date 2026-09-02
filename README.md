@@ -19,6 +19,7 @@ https://www.adafruit.com/product/5500
 
 ## Pictures
 
+![Screenshot](pics/4.jpg)
 ![Screenshot](pics/1.jpg)
 ![Screenshot](pics/2.jpg)
 ![Screenshot](pics/3.jpg)
@@ -49,8 +50,8 @@ https://www.adafruit.com/product/4694
 |-----|-----------|
 | VIN | 3.3–5V |
 | GND | GND |
-| SCLK | SCK (GPIO39) |
-| MOSI | MOSI (GPIO42) |
+| CLK | SCL (GPIO39) |
+| DI | MOSI (GPIO42) |
 | CS | D6 (GPIO6) |
 
 Shares the board SPI bus with the SD card below.
