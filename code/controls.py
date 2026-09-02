@@ -1,19 +1,11 @@
-# controls.py - single source of truth for the 4 rotary knobs + their buttons.
-#
-# Each entry in CONTROLS is one PHYSICAL control, left to right on the seesaw
-# breakout (position 0-3). Edit THIS file and it applies globally -- code.py's
-# main loop reads these definitions instead of hardcoding per-knob branches, so
-# changing a knob's turn action or a button's press action here changes it
-# everywhere at once.
-#
-# Event names are what player.PlayerState.on_event() understands:
-#   turn (knob):  KNOB_CW / KNOB_CCW (+ _FAST variants), VOL_UP / VOL_DOWN
-#   press (button): SELECT, PLAY_PAUSE, BACK, STOP, ...
-# Set a field to None to disable that action for the control.
+# controls.py -- single source of truth for the 4 rotary knobs + their buttons.
+# code.py's main loop reads CONTROLS every tick and turns each physical knob/button
+# into an event that player.PlayerState.on_event() understands; change it here and
+# it changes everywhere at once. Index = physical position on the seesaw breakout
+# (0 = leftmost ... 3 = rightmost); reordering entries swaps which physical knob does
+# what, but switch_pin must stay with its physical button. None / False = no action.
 
-# |encoder delta| in one tick that counts as a quick flick ("fast"). Only used
-# by controls whose turn_cw/turn_ccw are plain events with a *_FAST variant set.
-FAST_THRESHOLD = 3
+FAST_THRESHOLD = 3   # |encoder delta| in one tick that counts as a quick flick
 
 
 def _ctrl(name, switch_pin, turn_cw=None, turn_ccw=None, press=None,
@@ -24,16 +16,14 @@ def _ctrl(name, switch_pin, turn_cw=None, turn_ccw=None, press=None,
 
       name                 label (LED / debugging)
       switch_pin           seesaw pin of this knob's button
-      turn_cw / turn_ccw   event on clockwise / counter-clockwise turn
-                           (None = turning does nothing)
-      press                event when its button is pressed (None = no action)
-      turn_cw_fast         optional fast variant: if set, a quick flick
-                           (|delta| >= FAST_THRESHOLD) emits this instead of
-                           the normal turn event; otherwise the normal one.
+      turn_cw / turn_ccw   event on slow clockwise / counter-clockwise turn
+      turn_cw_fast/_ccw    optional: sent instead when the flick is quick
+                           (|delta| >= FAST_THRESHOLD); None = fast turns behave like slow ones
+      press                event when its button is pressed
       volume_popout        arm the Now-Playing volume pop-out on every turn
-      save_in_settings     press saves settings while in the Settings view
-      del_when_editing     press deletes a char while editing a setting
-      reconnect_when_saved press reconnects after a save (Settings view)
+      save_in_settings     in Settings, this press saves settings first, then fires `press`
+      del_when_editing     while editing a setting, this press deletes one char instead of firing `press`
+      reconnect_when_saved after a save, this press reconnects with the new settings
     """
     return {
         "name": name,
@@ -50,26 +40,51 @@ def _ctrl(name, switch_pin, turn_cw=None, turn_ccw=None, press=None,
     }
 
 
-# Physical position -> what it does. Order = left to right on the breakout;
-# the encoder channel is the list index (0-3), fixed by the hardware.
+# Order = left to right on the seesaw breakout; index 0 is the leftmost knob.
 CONTROLS = [
-    # NOTE: NAV's fast events use the legacy "KNOB_CWFAST"/"KNOB_CCWFAST"
-    # names (no underscore) that player.py does NOT handle -- so a quick
-    # flick on this knob is currently a no-op (only slow turns scroll /
-    # switch tracks). If you want fast flicks to work, change these two to
-    # "KNOB_CW_FAST" / "KNOB_CCW_FAST".
-    _ctrl("NAV",       switch_pin=12, turn_cw="KNOB_CW",      turn_ccw="KNOB_CCW",
-          press="SELECT",
-          turn_cw_fast="KNOB_CWFAST", turn_ccw_fast="KNOB_CCWFAST"),
+    # pos 1 -- NAV: stop playback; deletes chars while editing settings and
+    # reconnects after a save. Turns still scroll / switch tracks (the legacy
+    # fast-flick names below are ignored by player.py, so flicks do nothing).
+    _ctrl(
+        "NAV",
+        switch_pin=12,
+        turn_cw="KNOB_CW",
+        turn_ccw="KNOB_CCW",
+        turn_cw_fast="KNOB_CWFAST",
+        turn_ccw_fast="KNOB_CCWFAST",
+        press="STOP",
+        del_when_editing=True,
+        reconnect_when_saved=True,
+    ),
 
-    _ctrl("TRANSPORT", switch_pin=14, turn_cw="KNOB_CW_FAST", turn_ccw="KNOB_CCW_FAST",
-          press="PLAY_PAUSE", save_in_settings=True),
+    # pos 2 -- TRANSPORT: fast seek; play/pause; saves settings.
+    _ctrl(
+        "TRANSPORT",
+        switch_pin=14,
+        turn_cw="KNOB_CW_FAST",
+        turn_ccw="KNOB_CCW_FAST",
+        press="PLAY_PAUSE",
+        save_in_settings=True,
+    ),
 
-    _ctrl("VOLUME",    switch_pin=17, turn_cw="VOL_UP",       turn_ccw="VOL_DOWN",
-          press="BACK", volume_popout=True),
+    # pos 3 -- VOLUME: volume up/down; shows the volume bar on Now Playing.
+    _ctrl(
+        "VOLUME",
+        switch_pin=17,
+        turn_cw="VOL_UP",
+        turn_ccw="VOL_DOWN",
+        press="BACK",
+        volume_popout=True,
+    ),
 
-    _ctrl("AUX",       switch_pin=9,  turn_cw=None,           turn_ccw=None,
-          press="STOP", del_when_editing=True, reconnect_when_saved=True),
+    # pos 4 -- AUX: browse the library and pick tracks.
+    _ctrl(
+        "AUX",
+        switch_pin=9,
+        turn_cw="KNOB_CW",
+        turn_ccw="KNOB_CCW",
+        press="SELECT",
+    ),
 ]
 
 # Number of controls (drives the main loop's per-control arrays/loops).
