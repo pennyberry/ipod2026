@@ -1,0 +1,1 @@
+copy-item -path .\ipod2026\code\* -destination D:\ -Recurse -Force
