@@ -6,7 +6,8 @@
 # in-place pause); resume restarts the track from the top. Browse is LIVE
 # against the real server.
 #
-# Knob map (left -> right):
+# Knob map (left -> right) -- see controls.py for the live definitions;
+# that file is where you adjust each knob's turn action / button press.
 #   1  NAV       turn: scroll list / next-prev track   press: SELECT
 #   2  TRANSPORT turn: fast seek                       press: PLAY_PAUSE / SAVE
 #   3  VOLUME    turn: volume up/down                  press: BACK (MENU)
@@ -30,6 +31,7 @@
 import time
 from rainbowio import colorwheel
 
+import controls
 import audio as A
 from audio import (state, encoders, switches, pixels,
                    host, audio_tick, battery_tick, _apply_volume,
@@ -43,82 +45,83 @@ from ui import (render, display, WIDTH, _advance_banner,
 # ============================================================
 # Main loop
 # ============================================================
-last_pos = [-1, -1, -1, -1]
-was_pressed = [False, False, False, False]
-press_t = [0.0, 0.0, 0.0, 0.0]
-led_flash = [0.0, 0.0, 0.0, 0.0]
+N = controls.N_CONTROLS
+last_pos = [-1] * N
+was_pressed = [False] * N
+press_t = [0.0] * N
+led_flash = [0.0] * N
 last_t = time.monotonic()
 last_input_t = time.monotonic()   # last knob/button input (auto-return timer)
 _last_snap = None
+
+
+def _reconnect():
+    """Reconnect with the (possibly new) settings and reload the library."""
+    A._fetch_fail_t = 0
+    state.artists = []
+    state.artists_loaded = 0
+    state.artists_total = 0
+    state.artists_done = False
+    state._artists_rows_n = -1
+    state._catalog_pending = False
+    state._cat_clear()
+    do_connect()
+    boot_load_library()
+
+
 while True:
     now = time.monotonic()
     dt = now - last_t
     last_t = now
 
-    # --- knob deltas -> context events ---
-    for n in range(4):
+    # --- knob deltas -> context events (actions from controls.py) ---
+    for n, c in enumerate(controls.CONTROLS):
         pos = encoders[n].position
         if pos != last_pos[n]:
             d = pos - last_pos[n]
             last_pos[n] = pos
             last_input_t = now
             led_flash[n] = now
-            fast = "FAST" if abs(d) >= 3 else ""
-            if n == 0:
-                ev = ("KNOB_CW" if d > 0 else "KNOB_CCW") + fast
-            elif n == 1:
-                ev = "KNOB_CW_FAST" if d > 0 else "KNOB_CCW_FAST"
-            elif n == 2:
-                ev = "VOL_UP" if d > 0 else "VOL_DOWN"
-                if state.view() == "nowplaying":
-                    # arm the Now-Playing volume pop-out (and re-arm on
-                    # every further turn while it is up)
-                    U._vol_pop = True
-                    U._vol_pop_t = now
-                    U._vol_dirty = True
-            else:
-                continue
-            host(ev)
+            cw = d > 0
+            ev = c["turn_cw"] if cw else c["turn_ccw"]
+            # quick flick (|delta| >= FAST_THRESHOLD) uses the *_FAST variant
+            fast_ev = (c["turn_cw_fast"] if cw else c["turn_ccw_fast"]) \
+                if abs(d) >= controls.FAST_THRESHOLD else None
+            if fast_ev:
+                ev = fast_ev
+            if ev is not None:
+                host(ev)
+            if c["volume_popout"] and state.view() == "nowplaying":
+                # arm the Now-Playing volume pop-out (and re-arm on
+                # every further turn while it is up)
+                U._vol_pop = True
+                U._vol_pop_t = now
+                U._vol_dirty = True
     if U._vol_pop and now - U._vol_pop_t >= 3.0:
         U._vol_pop = False
         U._vol_dirty = True  # force the render that drops back to the status line
 
-    # --- button edges (debounced) -> events ---
-    for n in range(4):
+    # --- button edges (debounced) -> events (actions from controls.py) ---
+    for n, c in enumerate(controls.CONTROLS):
         pressed = switches[n].value == 0
         if pressed and not was_pressed[n]:
             press_t[n] = now
             last_input_t = now
         if was_pressed[n] and not pressed:
             if now - press_t[n] >= 0.05:
-                if state.view() == "settings" and state.set_editing and n == 3:
+                in_settings = state.view() == "settings"
+                ev = c["press"]
+                if in_settings and state.set_editing and c["del_when_editing"]:
                     host("DEL:1")
-                elif n == 0:
-                    host("SELECT")
-                elif n == 1:
-                    if state.view() == "settings":
-                        save_settings(state.settings)
-                        state.banner = "saved - press k2 to reconnect"
-                        host("PLAY_PAUSE")
-                    else:
-                        host("PLAY_PAUSE")
-                elif n == 2:
-                    host("BACK")
-                elif n == 3:
-                    if state.view() == "settings" and state.set_saved:
-                        # reconnect with (possibly new) settings
-                        A._fetch_fail_t = 0
-                        state.artists = []
-                        state.artists_loaded = 0
-                        state.artists_total = 0
-                        state.artists_done = False
-                        state._artists_rows_n = -1
-                        state._catalog_pending = False
-                        state._cat_clear()
-                        do_connect()
-                        boot_load_library()
-                    else:
-                        host("STOP")
+                elif in_settings and c["save_in_settings"]:
+                    save_settings(state.settings)
+                    state.banner = "saved - press k2 to reconnect"
+                    host(ev)
+                elif in_settings and c["reconnect_when_saved"] and state.set_saved:
+                    # reconnect with (possibly new) settings
+                    _reconnect()
+                elif ev is not None:
+                    host(ev)
         was_pressed[n] = pressed
 
     # --- auto-return to Now Playing ---

@@ -20,6 +20,7 @@ from settings import (load_settings, wifi_connect,
                       sd_store_catalog, sd_store_artists,
                       sd_load_artists, sd_clear_catalogs,
                       ARTISTS_CACHE)
+import controls
 import player
 from player import PlayerState
 import ui
@@ -359,11 +360,15 @@ def play_test_file(path=TEST_FILE):
     return (True, "playing %s" % path)
 seesaw = adafruit_seesaw.seesaw.Seesaw(i2c, 0x49)
 
+# Encoder channels are fixed by the hardware (channel == physical position);
+# button pins come from controls.py so a rewire is a one-file change.
 encoders = [
-    adafruit_seesaw.rotaryio.IncrementalEncoder(seesaw, n) for n in range(4)
+    adafruit_seesaw.rotaryio.IncrementalEncoder(seesaw, n)
+    for n in range(controls.N_CONTROLS)
 ]
 switches = [
-    adafruit_seesaw.digitalio.DigitalIO(seesaw, pin) for pin in (12, 14, 17, 9)
+    adafruit_seesaw.digitalio.DigitalIO(seesaw, pin)
+    for pin in controls.SWITCH_PINS
 ]
 for switch in switches:
     switch.switch_to_input(digitalio.Pull.UP)
