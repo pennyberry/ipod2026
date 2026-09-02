@@ -17,6 +17,7 @@ state = None  # runtime-bound by audio.py; read by render()
 # ============================================================
 # Display
 # ============================================================
+#clear previous displayio root_group (if any) so we can take over the SPI bus
 displayio.release_displays()
 framebuffer = sharpdisplay.SharpMemoryFramebuffer(
     board.SPI(), board.D6, 400, 240
@@ -34,15 +35,7 @@ N_ROWS = 7
 
 ui = displayio.Group()
 display.root_group = ui
-
-# Sharp memory-in-pixel panel: before the FIRST SPI write it shows its own
-# power-on state (white/undefined), NOT our buffer -- and with auto_refresh
-# off nothing is pushed until an explicit refresh(). The first real render()
-# doesn't run until audio.py's boot gets past load_settings()/mount_sd(), so
-# without this the panel sits white for that whole window. Push one all-black
-# full frame NOW (empty group -> every pixel 0x00 = dark, and root_group was
-# just set so this is a guaranteed full-screen write) to drive the whole
-# 400x240 black immediately, well before the slow SD work in audio.py.
+#initialize the display with a blank frame
 display.refresh()
 
 title = Label(font=FONT, scale=2, text="")
