@@ -845,7 +845,7 @@ class JellyfinClient(object):
         The server may answer chunked or with Content-Length -- the
         dechunker sniffs the first body byte and handles both, exactly
         like get_items_stream does for JSON. Capped at 512KB: album art
-        is small (we request ~100x75), so a runaway body just raises."""
+        is small (we request ~230x230), so a runaway body just raises."""
         try:
             raw = self._get(path, params)
         except Exception as e:

@@ -202,7 +202,7 @@ def mount_sd():
 #     artists.json            {"total":N, "items":[[id,name], ...]}
 #     cat_<artist_id>.json    {"albums":[[id,name,year], ...],
 #                              "tracks":[[id,title,index,secs,album_id],...]}
-#     art/<album_id>.jpg      album artwork (JPEG, ~100x75), one file per
+#     art/<album_id>.jpg      album artwork (JPEG, ~230x230), one file per
 #                             album; a missing file = no art for that album.
 #
 #   The card already holds code.py/settings.json; the cache lives in its own

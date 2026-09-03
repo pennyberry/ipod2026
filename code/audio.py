@@ -531,7 +531,7 @@ def fetch_album_art(albums):
         try:
             data = client.fetch_image(
                 "/Items/%s/Images/Primary" % aid,
-                {"maxWidth": "100", "maxHeight": "75", "quality": "80"})
+                {"maxWidth": "230", "maxHeight": "230", "quality": "80"})
         except Exception as e:
             # Network/HTTP failure (not a 404): stop fetching the rest;
             # the ones already stored are still good.
@@ -568,7 +568,7 @@ def topup_album_art():
         try:
             data = client.fetch_image(
                 "/Items/%s/Images/Primary" % aid,
-                {"maxWidth": "100", "maxHeight": "75", "quality": "80"})
+                {"maxWidth": "230", "maxHeight": "230", "quality": "80"})
         except Exception as e:
             # Network/HTTP failure (not a 404): stop; the rest stays for a
             # later top-up (the flag is re-set on every artist select).
