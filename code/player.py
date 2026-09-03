@@ -56,6 +56,7 @@ class PlayerState(object):
         self.track_cache = []      # (item_id, title, index, runtime, album_id) for current artist
         self.albums_loaded = False # True once the selected artist's catalog is in RAM
         self._catalog_pending = False  # one-shot: fetch the selected artist's catalog (RAM+SD miss)
+        self._art_pending = False      # one-shot: fetch missing artwork for the loaded catalog
         # Session-only catalog cache: artist_id -> (albums, tracks). Lives in
         # RAM only, so a reboot wipes it automatically -- cache cleared at
         # startup with zero code, and it can never hold data older than this
@@ -149,6 +150,12 @@ class PlayerState(object):
                     self._cat_touch(self.artist_id)
                     self.albums_loaded = True
                     self.banner = ""
+                    # Artwork was fetched when this catalog first loaded; if
+                    # that run predates the art feature (or was interrupted),
+                    # some albums may still be missing their file. The main
+                    # loop top-ups whatever is absent -- zero requests when
+                    # everything is already on the card.
+                    self._art_pending = True
                 else:
                     # SD cache hit: read the artist's catalog from the card
                     # (fast, offline). One SPI file read instead of dozens of
@@ -159,6 +166,9 @@ class PlayerState(object):
                         self._cat_store(self.artist_id, c_albums, c_tracks)
                         self.albums_loaded = True
                         self.banner = ""
+                        # Same top-up as the RAM hit: art may be missing for
+                        # albums cached before the art feature existed.
+                        self._art_pending = True
                     else:
                         # Cache miss: mark for a one-shot network fetch in
                         # the main loop (keeps this handler non-blocking).
@@ -321,6 +331,7 @@ class PlayerState(object):
             "title": t[1] if t else "Nothing playing",
             "artist": self.artist_name,
             "album": self._current_album_name(),
+            "art": t[4] if t else "",   # album id -> cached art tile (ui.py)
             "pos": self.pos, "dur": self.dur,
             "playing": self.playing, "volume": self.volume,
         }

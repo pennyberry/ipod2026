@@ -202,6 +202,8 @@ def mount_sd():
 #     artists.json            {"total":N, "items":[[id,name], ...]}
 #     cat_<artist_id>.json    {"albums":[[id,name,year], ...],
 #                              "tracks":[[id,title,index,secs,album_id],...]}
+#     art/<album_id>.jpg      album artwork (JPEG, ~100x75), one file per
+#                             album; a missing file = no art for that album.
 #
 #   The card already holds code.py/settings.json; the cache lives in its own
 #   /sd/cache subdir so the SD-file browser can see (and delete) it.
@@ -296,6 +298,66 @@ def sd_clear_catalogs():
             if name.startswith("cat_") and name.endswith(".json"):
                 try:
                     os.remove(SD_CACHE_DIR + "/" + name)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
+# ============================================================
+# Album artwork cache (JPEG files under /sd/cache/art/)
+#   One file per album, named by the Jellyfin item id. The art is
+#   fetched lazily when an artist's catalog loads (see audio.py) and
+#   drawn on the Now-Playing screen from this card cache -- so it
+#   works offline once cached. A missing file simply means "no art".
+# ============================================================
+ART_DIR = "/sd/cache/art"
+
+
+def _art_path(album_id):
+    return ART_DIR + "/" + album_id + ".jpg"
+
+
+def sd_store_art(album_id, data):
+    """Write one album's artwork bytes to the card. Best-effort: a full
+    or failing card just means no art for that album (never an error)."""
+    if not _sd_cache_dir():
+        return False
+    try:
+        os.stat(ART_DIR)
+    except OSError:
+        try:
+            os.mkdir(ART_DIR)
+        except OSError:
+            return False
+    try:
+        with open(_art_path(album_id), "wb") as f:
+            f.write(data)
+        return True
+    except (OSError, Exception):
+        return False
+
+
+def sd_load_art(album_id):
+    """Read one album's artwork bytes from the card. -> bytes or None."""
+    if not sd_present:
+        return None
+    try:
+        with open(_art_path(album_id), "rb") as f:
+            return f.read()
+    except (OSError, Exception):
+        return None
+
+
+def sd_clear_art():
+    """Delete all cached artwork files."""
+    if not sd_present:
+        return
+    try:
+        for name in os.listdir(ART_DIR):
+            if name.endswith(".jpg"):
+                try:
+                    os.remove(ART_DIR + "/" + name)
                 except OSError:
                     pass
     except OSError:

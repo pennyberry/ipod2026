@@ -10,6 +10,16 @@ import board
 from adafruit_display_text.label import Label
 from terminalio import FONT
 
+try:
+    from jpegio import JpegDecoder
+except ImportError:
+    JpegDecoder = None   # firmware without jpegio: no art, text-only NP screen
+if JpegDecoder is not None:
+    try:
+        from displayio import ColorConverter, Colorspace
+    except ImportError:
+        ColorConverter = None
+
 import settings as sd
 
 state = None  # runtime-bound by audio.py; read by render()
@@ -96,6 +106,89 @@ sep.x = 4
 sep.y = 34
 ui.append(sep)
 
+# Now-Playing album art: a JPEG decoded from the SD cache into an RGB565
+# bitmap, shown as a TileGrid. The Sharp panel is 1-bit grayscale (the
+# framebuffer driver reports get_grayscale=True), so a ColorConverter maps
+# each decoded pixel to black/white by luminance -- jpegio writes full
+# RGB565 values into the bitmap, and TileGrid REQUIRES a pixel_shader
+# (None raises TypeError at construction). The tile sits in the top-left
+# corner; the title label is shifted right of it while art is visible. One
+# JpegDecoder + one Bitmap are reused for every album (a fresh decode
+# allocates a few KB each time, so reusing keeps RAM flat across track
+# changes).
+ART_W = 75
+ART_H = 75
+art_decoder = None
+art_bitmap = None
+art_tile = None
+if JpegDecoder is not None and ColorConverter is not None:
+    try:
+        art_decoder = JpegDecoder()
+        art_bitmap = displayio.Bitmap(ART_W, ART_H, 65535)
+        # jpegio decodes into RGB565 (its own test suite reads pixels back
+        # with the 0x7E0 green mask), so convert from RGB565. The converter
+        # thresholds to the panel's single bit by luminance: dark JPEG
+        # areas -> ink, light areas -> paper.
+        art_tile = displayio.TileGrid(
+            art_bitmap,
+            pixel_shader=displayio.ColorConverter(
+                input_colorspace=displayio.Colorspace.RGB565))
+        art_tile.x = 4
+        art_tile.y = 8
+        ui.append(art_tile)
+        # Hidden until a Now-Playing render decodes real art: the bitmap is
+        # zero-filled at creation, and on this monochrome panel that would
+        # draw as a solid black box in the top-left corner of EVERY screen.
+        art_tile.hidden = True
+    except Exception:
+        # decoder/bitmap/shader alloc failed (low RAM): fall back to
+        # text-only NP
+        art_decoder = None
+        art_bitmap = None
+        art_tile = None
+_art_shown_for = ""   # album id currently decoded onto the tile ("")
+
+
+def _show_art(album_id):
+    """Decode the album's cached JPEG onto the art tile. Returns True when
+    art is (or stays) visible. Memoized by album id: render() runs every
+    tick while a track plays, so only an album CHANGE re-reads the card and
+    re-decodes (~2-4KB SPI read + 75x75 decode). A missing/corrupt file
+    hides the tile -- and clears any STALE art from a previous album, since
+    render() never repaints the tile on its own (auto_refresh is off), so
+    without this the old cover would sit on screen for the new track."""
+    global _art_shown_for
+    if art_tile is None or not album_id:
+        _hide_art()
+        return False
+    if album_id == _art_shown_for:
+        return True   # already on screen
+    data = sd.sd_load_art(album_id)
+    if not data:
+        _hide_art()
+        return False
+    try:
+        w, h = art_decoder.open(data)
+        # The server scales to fit maxWidth/maxHeight (aspect preserved), so
+        # the image is <= 75x75; center it in the tile.
+        x = max(0, (ART_W - w) // 2)
+        y = max(0, (ART_H - h) // 2)
+        art_decoder.decode(art_bitmap, x=x, y=y)
+    except Exception:
+        return False
+    art_tile.hidden = False   # decoded fresh art -> show the tile
+    _art_shown_for = album_id
+    return True
+
+
+def _hide_art():
+    global _art_shown_for
+    if art_tile is not None:
+        # Hide the node itself. (Filling the bitmap with 0 would instead
+        # draw a solid black box on this monochrome panel.)
+        art_tile.hidden = True
+    _art_shown_for = ""
+
 row_labels = []
 for i in range(N_ROWS):
     lab = Label(font=FONT, scale=2, text="")
@@ -149,6 +242,7 @@ def _hide_nowplaying():
     np_bar.text = ""
     np_t1.text = ""
     np_t2.text = ""
+    _hide_art()
 
 
 # terminalio FONT advance in pixels at scale=2, measured on the real panel:
@@ -338,7 +432,17 @@ def render(snap):
         # Clean centered layout: title (big), artist, album, then the
         # progress bar with times at each end. Everything else stays empty.
         e = extra
-        _center(np_title, e["title"], 38, 18)
+        if _show_art(e.get("art", "")):
+            # Art tile occupies x 4..79 in the top-left corner: truncate the
+            # title to what fits right of it and center within that span.
+            ttxt = e["title"]
+            max_chars = (WIDTH - 86) // 18
+            if len(ttxt) > max_chars:
+                ttxt = ttxt[:max_chars - 3] + "..."
+            np_title.text = ttxt
+            np_title.x = max(86, (WIDTH - len(ttxt) * 18) // 2)
+        else:
+            _center(np_title, e["title"], 38, 18)
         _center(np_artist, e["artist"], 32, 12)
         _center(np_album, e["album"], 32, 12)
         dur = e["dur"]

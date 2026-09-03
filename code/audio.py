@@ -19,6 +19,7 @@ import settings as sd
 from settings import (load_settings, wifi_connect,
                       sd_store_catalog, sd_store_artists,
                       sd_load_artists, sd_clear_catalogs,
+                      sd_store_art, sd_clear_art,
                       ARTISTS_CACHE)
 import controls
 import player
@@ -501,6 +502,85 @@ def load_artist_catalog():
     state._cat_store(state.artist_id, albums, tracks)
     # Persist to the SD cache (best-effort; the RAM cache is already set).
     sd_store_catalog(state.artist_id, albums, tracks)
+    fetch_album_art(albums)
+    state.banner = ""
+
+
+def fetch_album_art(albums):
+    """Fetch each album's artwork from the server and store it on the SD
+    card (/sd/cache/art/<album_id>.jpg). Runs right after a catalog load:
+    the art is then available offline for the Now-Playing screen.
+
+    Best-effort throughout -- one failed image (or a dead network) must
+    never break playback, so errors stop the loop quietly and whatever
+    already landed stays cached. Albums whose art file already exists on
+    the card are skipped (a re-open of a known artist costs zero requests)."""
+    if not client or not sd.sd_present:
+        return   # nowhere to cache it -> don't spend the bandwidth
+    n = len(albums)
+    for i, a in enumerate(albums):
+        aid = a[0]
+        # Skip albums whose art is already on the card (a partial fill from
+        # an earlier interrupted run heals itself; deleting only the
+        # catalog file never re-fetches art that exists).
+        try:
+            os.stat(sd._art_path(aid))
+            continue
+        except OSError:
+            pass
+        try:
+            data = client.fetch_image(
+                "/Items/%s/Images/Primary" % aid,
+                {"maxWidth": "100", "maxHeight": "75", "quality": "80"})
+        except Exception as e:
+            # Network/HTTP failure (not a 404): stop fetching the rest;
+            # the ones already stored are still good.
+            try:
+                print("ART FETCH ERROR:", repr(e))
+            except Exception:
+                pass
+            break
+        if data is None or not sd_store_art(aid, data):
+            continue   # no art for this album / card write failed
+        state.banner = "loading artwork... %d/%d" % (i + 1, n)
+        render(state.snapshot())
+
+
+def topup_album_art():
+    """Fetch artwork only for the CURRENT artist's albums that are missing
+    from the SD cache. Called from the main loop when _art_pending is set:
+    a catalog loaded from the RAM/SD cache never ran fetch_album_art (that
+    runs on network loads only), so artists cached before the art feature --
+    or whose first art run was interrupted -- would otherwise play with no
+    tile. Albums already on the card are skipped via a cheap stat, so an
+    artist whose art is complete costs zero requests and returns instantly."""
+    if not client or not sd.sd_present:
+        return   # nowhere to cache it -> don't spend the bandwidth
+    albums = state.albums
+    n = len(albums)
+    for i, a in enumerate(albums):
+        aid = a[0]
+        try:
+            os.stat(sd._art_path(aid))
+            continue   # already cached
+        except OSError:
+            pass
+        try:
+            data = client.fetch_image(
+                "/Items/%s/Images/Primary" % aid,
+                {"maxWidth": "100", "maxHeight": "75", "quality": "80"})
+        except Exception as e:
+            # Network/HTTP failure (not a 404): stop; the rest stays for a
+            # later top-up (the flag is re-set on every artist select).
+            try:
+                print("ART FETCH ERROR:", repr(e))
+            except Exception:
+                pass
+            break
+        if data is None or not sd_store_art(aid, data):
+            continue   # no art for this album / card write failed
+        state.banner = "loading artwork... %d/%d" % (i + 1, n)
+        render(state.snapshot())
     state.banner = ""
 
 
@@ -626,11 +706,10 @@ def host(ev):
         # and reports "test done" in the banner.
         state.banner = play_test_file()[1]
     elif i == "rebuild":
-        # Rebuild cache from Settings: wipe the SD library cache, reconnect,
-        # and re-gather the artist list (stored back to SD). Per-artist
-        # catalogs are re-cached lazily as you browse, so this only touches
-        # the (relatively cheap) artist list. Blocks while it runs; the banner
-        # shows progress.
+        # Rebuild cache from Settings: wipe the SD library cache (catalogs
+        # AND artwork), reconnect, and re-gather the artist list (stored
+        # back to SD). Per-artist catalogs + art are re-cached lazily as you
+        # browse. Blocks while it runs; the banner shows progress.
         if not client and not do_connect():
             state.banner = "rebuild failed: no network"
             return
@@ -640,6 +719,7 @@ def host(ev):
         state.banner = "wiping cache..."
         render(state.snapshot())
         sd_clear_catalogs()
+        sd_clear_art()
         try:
             os.remove(ARTISTS_CACHE)
         except OSError:
@@ -652,6 +732,7 @@ def host(ev):
         state.artists_done = False
         state._artists_rows_n = -1
         state._catalog_pending = False
+        state._art_pending = False
         state._cat_clear()
         boot_load_library()
         state.banner = "cache rebuilt"

@@ -835,6 +835,40 @@ class JellyfinClient(object):
         album_list.sort(key=lambda a: (a[2] or 0, a[1].lower()))
         tracks.sort(key=lambda t: (t[2] or 0, t[1]))
         return album_list, tracks
+
+    def fetch_image(self, path, params=None):
+        """GET a binary resource (album art) and return its FULL body as
+        bytes. Returns None when the item has no such image (HTTP 404);
+        raises on any other failure (network/HTTP error) so callers can
+        stop instead of marking every remaining album as artless.
+
+        The server may answer chunked or with Content-Length -- the
+        dechunker sniffs the first body byte and handles both, exactly
+        like get_items_stream does for JSON. Capped at 512KB: album art
+        is small (we request ~100x75), so a runaway body just raises."""
+        try:
+            raw = self._get(path, params)
+        except Exception as e:
+            if "HTTP 404" in str(e):
+                return None   # no image of this type for that item
+            raise
+        reader = BytesReader(src=ChunkedReader(raw))
+        out = bytearray()
+        try:
+            while True:
+                d = reader.read(1024)
+                if not d:
+                    break
+                out += d
+                if len(out) > 512 * 1024:
+                    raise RuntimeError("image too large")
+        finally:
+            try:
+                raw.close()   # the _SSLSockReader from _get owns the socket
+            except Exception:
+                pass
+        return bytes(out)
+
 def net_reachable(host="8.8.8.8", port=53, timeout=5):
     """Internet egress test: TCP-connect to a well-known host and time the
     handshake. A completed handshake proves there's a route past the WiFi

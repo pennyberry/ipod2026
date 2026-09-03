@@ -35,7 +35,7 @@ import controls
 import audio as A
 from audio import (state, encoders, switches, pixels,
                    host, audio_tick, battery_tick, _apply_volume,
-                   load_artists_page, load_artist_catalog,
+                   load_artists_page, load_artist_catalog, topup_album_art,
                    do_connect, boot_load_library)
 from settings import save_settings
 import ui as U
@@ -64,6 +64,7 @@ def _reconnect():
     state.artists_done = False
     state._artists_rows_n = -1
     state._catalog_pending = False
+    state._art_pending = False
     state._cat_clear()
     do_connect()
     boot_load_library()
@@ -144,6 +145,14 @@ while True:
         else:
             state._catalog_pending = False
             state.banner = "no network to load catalog"
+    # Artwork top-up: set on artist SELECT when the catalog came from a
+    # cache (those paths never fetch art). Runs once per selection; for an
+    # artist whose art is complete it stats each album and returns with zero
+    # requests. The flag stays set while offline so it fires as soon as the
+    # network is back again.
+    if state._art_pending and A.client and state.net_ok:
+        state._art_pending = False
+        topup_album_art()
 
     # --- playback: real MP3 stream (audio section above) ---
     # audio_tick keeps state.pos in lockstep with the decoder and
