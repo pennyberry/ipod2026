@@ -155,7 +155,7 @@ def _apply_volume(vol):
         return
     _last_volume = vol
     try:
-        dac.dac_volume = -70 + vol * 67 // 100
+        dac.dac_volume = -50 + vol * 67 // 100
     except Exception:
         pass
 def audio_stop():
